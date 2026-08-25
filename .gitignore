@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+
+# Never commit real environment files - only .env.example is tracked.
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store

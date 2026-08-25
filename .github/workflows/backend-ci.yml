@@ -1,0 +1,106 @@
+name: backend-ci
+
+# PRs are validated only. Merging to main runs the same validation and then,
+# if it passes, hands off to the orchestrator repo (see notify-deployment).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Least privilege: this workflow only ever reads its own source.
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify Docker image builds
+        run: docker build -t poc-nestjs-backend:ci .
+
+      - name: Smoke test the image
+        run: |
+          docker run -d --name backend-smoke -p 3001:3001 -e PORT=3001 poc-nestjs-backend:ci
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:3001/api/health; then
+              echo "" && echo "Container is healthy."
+              docker rm -f backend-smoke
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Container failed to become healthy."
+          docker logs backend-smoke
+          docker rm -f backend-smoke
+          exit 1
+
+  notify-deployment:
+    name: Trigger full-stack deployment
+    # Only after a merge to main, and only if validation passed.
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch to poc-deployment
+        env:
+          # Fine-grained PAT scoped to the poc-deployment repo only,
+          # with a single permission: Contents -> Read and write.
+          # GITHUB_TOKEN cannot be used here; see DEPLOYMENT.md.
+          GH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
+          ORCHESTRATOR: ${{ vars.DEPLOY_ORCHESTRATOR_REPO }}
+        run: |
+          if [ -z "$ORCHESTRATOR" ]; then
+            echo "::error::Repository variable DEPLOY_ORCHESTRATOR_REPO is not set (expected e.g. your-user/poc-deployment)."
+            exit 1
+          fi
+
+          echo "Dispatching deploy-all to $ORCHESTRATOR"
+          status=$(curl -sS -o /tmp/resp.txt -w '%{http_code}' \
+            -X POST "https://api.github.com/repos/$ORCHESTRATOR/dispatches" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "$(printf '{"event_type":"deploy-all","client_payload":{"source_repo":"%s","sha":"%s","actor":"%s"}}' \
+                  "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_ACTOR")")
+
+          if [ "$status" != "204" ]; then
+            echo "::error::repository_dispatch failed with HTTP $status"
+            cat /tmp/resp.txt
+            exit 1
+          fi
+
+          echo "Dispatch accepted (HTTP 204)."
+          {
+            echo "### Deployment triggered"
+            echo ""
+            echo "Handed off to [\`$ORCHESTRATOR\`](https://github.com/$ORCHESTRATOR/actions) — deployed URLs appear in that run's summary."
+          } >> "$GITHUB_STEP_SUMMARY"
