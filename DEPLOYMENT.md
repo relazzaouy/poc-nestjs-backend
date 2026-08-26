@@ -49,6 +49,28 @@ output instead.
 If you ever see NestJS failing to resolve a dependency on Vercel while it works
 locally, this is the first thing to check.
 
+### Why `declaration: true` is not optional
+
+Vercel typechecks `api/index.ts`. Because that file imports from `dist/`, the
+compiler needs `.d.ts` files there — without them the build fails with:
+
+```
+error TS7016: Could not find a declaration file for module '../dist/app.module'.
+```
+
+`tsconfig.json` therefore sets `"declaration": true` so `nest build` emits
+declarations alongside the JavaScript. Three settings work together here and all
+three are load-bearing:
+
+| Setting | Why |
+| --- | --- |
+| `declaration: true` in `tsconfig.json` | emits the `.d.ts` files Vercel needs to typecheck the handler |
+| `api` in `tsconfig.build.json`'s `exclude` | keeps `nest build` from compiling the handler into `dist/`, which would be circular |
+| `api/**/*` in `tsconfig.json`'s `include` | makes a local `npm run typecheck` catch exactly what Vercel catches |
+
+`npm run typecheck` must run **after** `npm run build`, since it needs `dist/` to
+exist. CI does them in that order.
+
 ## Automatic deployments are disabled
 
 `vercel.json` contains:
