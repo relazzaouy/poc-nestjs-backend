@@ -42,10 +42,10 @@ curl http://localhost:3001/api/hello
 
 ## Environment variables
 
-| Variable | Local | Render | Notes |
+| Variable | Local | Deployed | Notes |
 | --- | --- | --- | --- |
-| `PORT` | `3001` | injected by Render | Never hardcode it. Defaults to 3000. |
-| `CORS_ORIGIN` | `http://localhost:3000` | your deployed frontend URL | Comma-separated. Unset ⇒ all origins allowed. |
+| `PORT` | `3001` | injected by the container host | Never hardcode it. Defaults to 3001. Unused on Vercel. |
+| `CORS_ORIGIN` | `http://localhost:3000` | your deployed frontend URL | Comma-separated. Unset falls back to localhost:3000 — never a wildcard. |
 
 See `.env.example`. `.env` is gitignored.
 

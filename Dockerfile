@@ -23,8 +23,8 @@ COPY --from=builder --chown=node:node /app/package.json ./package.json
 
 USER node
 
-# Render injects PORT at runtime; this is only the local-run default.
-ENV PORT=3000
-EXPOSE 3000
+# A container host injects PORT at runtime; this is only the local default.
+ENV PORT=3001
+EXPOSE 3001
 
 CMD ["node", "dist/main.js"]

@@ -4,30 +4,73 @@ Full, cross-repository setup lives in the orchestrator repo:
 **`poc-deployment/DEPLOYMENT.md`**. This file covers only what is specific to
 this service.
 
-## Render service
+## Vercel project
 
 | Field | Value |
 | --- | --- |
-| Type | Web Service |
-| Repository | `<owner>/poc-nestjs-backend` |
-| Language / Runtime | **Docker** |
-| Dockerfile Path | `./Dockerfile` |
-| Branch | `main` |
-| Health Check Path | `/api/health` |
-| Auto-Deploy | **Off** — `poc-deployment` owns deployments |
+| Import from | `<owner>/poc-nestjs-backend` |
+| Framework Preset | **Other** |
+| Root Directory | `./` |
+| Build and Output Settings | leave default — `vercel.json` supplies `buildCommand` |
+| Production branch | `main` |
 
-## Environment variables to set in Render
+No payment method is required. Vercel's Hobby plan takes no card and cannot be
+billed — it pauses at the free-tier limits instead.
+
+## Environment variables to set in Vercel
 
 | Key | Value | Required |
 | --- | --- | --- |
-| `CORS_ORIGIN` | `https://poc-nextjs-frontend.onrender.com` | yes, once the frontend URL exists |
-| `PORT` | — | **no**, Render injects it |
+| `CORS_ORIGIN` | `https://poc-nextjs-frontend.vercel.app` | yes, once the frontend URL exists |
+| `PORT` | — | **no** — the serverless handler does not listen on a port |
 
-Setting `PORT` yourself will fight Render's port detection. Leave it alone.
+`CORS_ORIGIN` accepts a comma-separated list. Left unset it falls back to
+`http://localhost:3000` only — never a wildcard, so a misconfigured deployment
+fails closed rather than silently allowing every origin.
 
-`CORS_ORIGIN` accepts a comma-separated list if you need more than one origin.
-Leave it unset and every origin is allowed — fine locally, not what you want in
-production.
+## How this runs on Vercel
+
+`api/index.ts` bootstraps the existing `AppModule` behind an Express adapter and
+caches the initialised app at module scope, so warm invocations reuse it.
+`vercel.json` rewrites every path to that one function, and the app keeps its
+`api` global prefix — so `/api/hello` and `/api/health` resolve exactly as they
+do locally.
+
+**NestJS is not replaced.** Same controllers, same DI, same tests.
+
+### The esbuild detail that matters
+
+Vercel bundles functions with esbuild, which does **not** support
+`emitDecoratorMetadata`. Importing `src/` directly would silently break NestJS
+dependency injection. So `vercel.json` runs `npm run build` first (`tsc`, which
+does emit that metadata) and `api/index.ts` imports from the compiled `dist/`
+output instead.
+
+If you ever see NestJS failing to resolve a dependency on Vercel while it works
+locally, this is the first thing to check.
+
+## Automatic deployments are disabled
+
+`vercel.json` contains:
+
+```json
+{ "git": { "deploymentEnabled": { "main": false } } }
+```
+
+Pushes to `main` do not deploy. Only the Deploy Hook fired by `poc-deployment`
+does, which keeps the orchestrator as the single deployment entry point.
+
+## Docker
+
+The `Dockerfile` is **not** what Vercel runs, but it is still built and smoke
+tested by CI on every pull request. It exists so the backend stays portable: the
+moment you want a long-running Node process on a container host, the image is
+already proven.
+
+```bash
+docker build -t poc-nestjs-backend .
+docker run --rm -p 3001:3001 -e PORT=3001 poc-nestjs-backend
+```
 
 ## GitHub configuration for this repository
 
@@ -40,8 +83,8 @@ production.
 
 `GITHUB_TOKEN` cannot be used for the dispatch: it is scoped to this repository
 only and returns `404` against another repo's `/dispatches` endpoint. The
-fine-grained PAT above is the minimum-privilege replacement — one repository,
-one permission.
+fine-grained PAT above is the minimum-privilege replacement — one repository, one
+permission.
 
 ## What happens on merge
 

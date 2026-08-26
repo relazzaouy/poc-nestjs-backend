@@ -11,3 +11,7 @@ Dockerfile
 .dockerignore
 README.md
 DEPLOYMENT.md
+
+# Vercel-only entrypoint; the container runs dist/main.js
+api
+vercel.json
