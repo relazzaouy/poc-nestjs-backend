@@ -24,7 +24,7 @@ describe('API (e2e)', () => {
   it('GET /api/hello returns the message and a timestamp', async () => {
     const res = await request(app.getHttpServer()).get('/api/hello').expect(200);
 
-    expect(res.body.message).toBe('Hello from NestJS backend!');
+    expect(res.body.message).toBe('Hello from NestJS backend v2!');
     expect(typeof res.body.timestamp).toBe('string');
     expect(Number.isNaN(Date.parse(res.body.timestamp))).toBe(false);
   });
