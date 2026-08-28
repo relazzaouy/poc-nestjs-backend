@@ -5,7 +5,7 @@ export class AppController {
   @Get('hello')
   getHello() {
     return {
-      message: 'Hello from NestJS backend!',
+      message: 'Hello from NestJS backend v2!',
       timestamp: new Date().toISOString(),
     };
   }
